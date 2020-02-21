@@ -4,6 +4,7 @@ import simplejson
 
 from pipeline.model import db, Vertex, Edge, Graph, Pipeline, STATE_WAITING, Track, STATE_RUNNING, STATE_PENDING, \
     STATE_FAILED, STATE_FINISH, STATE_SUCCEED
+from pipeline.service import transactional
 
 TYPES = {
     'str': str,
@@ -98,7 +99,8 @@ def finish_params(v_id, d: dict):
     return ret, script
 
 
-def finish_script(params, script):
+@transactional
+def finish_script(t_id, params, script):
     newline = ''
     print(params, type(params))
     print(script, type(script))
@@ -118,5 +120,12 @@ def finish_script(params, script):
             start = matcher.end()
         else:
             newline += script[start:]
+
+        # 入库track input script
+        t = db.session.query(Track).filter(Track.id == t_id).first()
+        if t:
+            t.input = simplejson.dumps(params)
+            t.script = newline
+            db.session.add(t)
 
     return newline

@@ -142,10 +142,8 @@ if inp:
     print(d)
 
 
-
 result = finish_params(v_id, d)
 print(result)
 
-
-newline = finish_script(*result)
+newline = finish_script(t_id,*result)
 print('newline is ',newline)
