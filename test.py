@@ -24,15 +24,7 @@
 # 如果节点没有执行失败，一定会成功执行，其它的节点继续执行，如果最后一个终点执行完成，会发现其他的节点是成功状态，所以它将pipeline
 # 的state置为
 
-from subprocess import Popen, PIPE
-from tempfile import TemporaryFile
+from web import app
 
-tf = TemporaryFile('w+')
-#p = Popen('echo "magedu" \n ping www.baidu.com -c 4 ', shell=True, stdout=tf)
-p = Popen('/Users/quyixiao/ttg/xxx', shell=True, stdout=tf)
-code = p.wait(5)
-print(code)
-
-tf.seek(0)
-text = tf.read()
-print(11111111, text)
+if __name__ == '__main__':
+    app.run()

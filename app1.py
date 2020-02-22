@@ -2,7 +2,7 @@ from pipeline.executor import showpipeline
 from pipeline.executor import finish_params, finish_script
 import simplejson
 from pipeline.executor import EXECUTOR
-
+# 为了给用户提供友好的界面效果，在网页往往需要
 ps = showpipeline(1)  # 返回运行节点列表 print('-' * 30)
 print(ps)
 print('-' * 30)
