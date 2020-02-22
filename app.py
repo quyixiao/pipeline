@@ -35,7 +35,7 @@ def test_create_dag():
             }
         else:
             script = {
-                'script': 'echo "test1.A"\nping {ip} -w 4',
+                'script': 'echo "test1.A"\nping {ip} -c 4',
                 'next': 'B'
             }
 
@@ -125,6 +125,7 @@ print(p_id,p_name,p_state,t_id,v_id,t_state,inp,script)
 
 # input 处理 交互
 #
+d = {}
 if inp:
     try:
         inp = simplejson.loads(inp)
@@ -132,7 +133,7 @@ if inp:
             inp = {}
     except:
         inp = {}
-    d = {}
+
 
     for k,v in inp.items():
         if v.get('required',False):

@@ -1,4 +1,5 @@
 import re
+from collections import defaultdict
 from tempfile import TemporaryFile
 
 import simplejson
@@ -88,12 +89,11 @@ def showpipeline(p_id, states=[STATE_PENDING], exclude=[STATE_FAILED]):
 
 def finish_params(v_id, d: dict):
     ret = {}
-    inp = db.session.query(Vertex.input, Vertex.script).filter(Vertex.id == v_id).first()
-    print(inp)
-    script = ''
+    value = db.session.query(Vertex.input, Vertex.script).filter(Vertex.id == v_id).first()
+    print(value)
+    inp, script = value
     if inp:
-        script = inp[1]
-        inp = simplejson.loads(inp[0])
+        inp = simplejson.loads(inp)
         for k, v in inp.items():
             if k in d.keys():
                 ret[k] = TYPES[inp[k].get('type', 'str')](d[k])
@@ -188,21 +188,73 @@ class Executor:
 
     def _save_track(self):
         # 存储结果
-        # 从Queue里面拿结果存储数据
+        # 从Q里面拿数据存储
         while True:
             t_id, code, text = self.__queue.get()  # 阻塞拿
+            print(t_id, code, text)
+
             track = db.session.query(Track).filter(Track.id == t_id).one()
             track.state = STATE_SUCCEED if code == 0 else STATE_FAILED
             track.output = text
+
             if code != 0:
                 track.pipeline.state = STATE_FAILED
+            else:
+                # 流转代码， 隐含 自己成功，看别的顶点
+                # pipeline是否失败 ， track表中查找是否有失败的
+                tracks = db.session.query(Track).filter((Track.p_id == track.p_id) & (Track.id != t_id)).all()
+
+                states = {STATE_WAITING: 0, STATE_PENDING: 0, STATE_RUNNING: 0, STATE_FAILED: 0, STATE_SUCCEED: 0}
+
+                for t in tracks:
+                    states[t.state] += 1
+
+                if states[STATE_FAILED] > 0:
+                    track.pipeline.state = STATE_FAILED
+                elif len(tracks) == states[STATE_SUCCEED]:  # 说明除去自己之外全是成功的，你当然就是最后的那一个顶点，也就是终点
+                    track.pipeline.state = STATE_FINISH
+                else:  # 还有节点没有做完，判断自己有没有下一级
+                    # heads = db.session.query(Edge.head).filter(Edge.tail == track.v_id).all()
+                    # if len(heads) == 0:
+                    #     pass # 什么都不做，因为你没下一级，就是其中一个先做完的终点
+                    # else:
+                    query = db.session.query(Edge).filter(Edge.g_id == track.pipeline.g_id)
+
+                    t2h = defaultdict(list)
+                    h2t = defaultdict(list)
+
+                    for e in query:
+                        t2h[e.tail].append(e.head)
+                        h2t[e.head].append(e.tail)
+
+                    if track.v_id in t2h.keys():
+                        nexts = t2h[track.v_id]
+                        for n in nexts:
+                            tails = h2t[n]  # n pending 条件是tails所有状态都必须是成功
+                            # 统计tails是否都是成功的，可以pending,
+                            # select count(state) from track where track.v_id in (1,2,4)
+                            # and track.state = STATE_SUCCEED  and pid
+                            s_count = db.session.query(Track).filter(Track.p_id == track.p_id) \
+                                .filter(Track.v_id.in_(tails)) \
+                                .filter(Track.state == STATE_SUCCEED).count()
+                            if s_count == len(tails):
+                                # pending
+                                nx = db.session.query(Track).filter(Track.v_id == n).one()
+                                nx.state = STATE_PENDING
+                                db.session.add(nx)
+                            else:
+                                pass  # 什么都不做
+
+                    else:
+                        pass  # 什么都不做，因为你没下一级，就是其中一个先做完的终点
+
             db.session.add(track)
             try:
                 db.session.commit()
+                pass  # TODO
             except Exception as e:
+                db.session.rollback()
                 print(e)
-                db.session.rollback
-
 
 
 EXECUTOR = Executor()
