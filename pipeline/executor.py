@@ -143,8 +143,8 @@ class Executor:
         self.__executor = ThreadPoolExecutor(max_workers=workers)
         self.__event = threading.Event()
         self.__queue = Queue()
-        threading.Thread(self._run).start()
-        threading.Thread(self._save_track).start()
+        threading.Thread(target=self._run).start()
+        threading.Thread(target=self._save_track).start()
 
     def _execute(self, script, key):
         codes = 0
@@ -171,7 +171,7 @@ class Executor:
             print(e)
 
     def _run(self):
-        while self.__event.wait(1):
+        while not self.__event.wait(1):
             for future in as_completed(self.__tasks):  # 有可能阻塞
                 key, t_id = self.__tasks[future]
                 try:
@@ -202,3 +202,7 @@ class Executor:
             except Exception as e:
                 print(e)
                 db.session.rollback
+
+
+
+EXECUTOR = Executor()

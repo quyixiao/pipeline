@@ -1,7 +1,7 @@
 import simplejson as simplejson
 
 from pipeline.config import URL, DATABASE_DEBUG
-from pipeline.executor import start, showpipeline, finish_params, finish_script
+from pipeline.executor import start, showpipeline, finish_params, finish_script, EXECUTOR
 from pipeline.model import Database, STATE_WAITING,STATE_PENDING
 
 import sys
@@ -147,3 +147,5 @@ print(result)
 
 newline = finish_script(t_id,*result)
 print('newline is ',newline)
+
+EXECUTOR.execute(t_id,newline)
