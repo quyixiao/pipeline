@@ -1,10 +1,16 @@
 import re
+from tempfile import TemporaryFile
 
 import simplejson
 
 from pipeline.model import db, Vertex, Edge, Graph, Pipeline, STATE_WAITING, Track, STATE_RUNNING, STATE_PENDING, \
     STATE_FAILED, STATE_FINISH, STATE_SUCCEED
 from pipeline.service import transactional
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+import threading, time
+from subprocess import Popen
+import uuid
+from queue import Queue
 
 TYPES = {
     'str': str,
@@ -129,3 +135,70 @@ def finish_script(t_id, params, script):
             db.session.add(t)
 
     return newline
+
+
+class Executor:
+    def __init__(self, workers=5):
+        self.__tasks = {}
+        self.__executor = ThreadPoolExecutor(max_workers=workers)
+        self.__event = threading.Event()
+        self.__queue = Queue()
+        threading.Thread(self._run).start()
+        threading.Thread(self._save_track).start()
+
+    def _execute(self, script, key):
+        codes = 0
+        with TemporaryFile('a+') as f:
+            for line in script.splitlines():
+                p = Popen(line, shell=True, stdout=f)
+                code = p.wait()
+                codes += code
+                f.flush()
+                f.seek(0)
+                text = f.read()
+        return key, codes, text
+
+    def execute(self, t_id, script):
+        try:
+            t = db.session.query(Track).filter(Track.id == t_id).one()
+            key = uuid.uuid4().hex
+            self.__tasks[self.__executor.submit(self._execute, script, key)] = key, t_id
+            t.state = STATE_RUNNING
+            db.session.add(t)
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            print(e)
+
+    def _run(self):
+        while self.__event.wait(1):
+            for future in as_completed(self.__tasks):  # 有可能阻塞
+                key, t_id = self.__tasks[future]
+                try:
+                    key, code, text = future.result()
+                    print(key, code, text)
+                    # 拿到结果干什么？ 异步处理方案
+                    self.__queue.put((t_id, code, text))  # 推送到第三方queue
+
+                except Exception as e:
+                    print(e)
+                    print(key, t_id, 'failed')
+                finally:
+                    del self.__tasks[future]
+
+    def _save_track(self):
+        # 存储结果
+        # 从Queue里面拿结果存储数据
+        while True:
+            t_id, code, text = self.__queue.get()  # 阻塞拿
+            track = db.session.query(Track).filter(Track.id == t_id).one()
+            track.state = STATE_SUCCEED if code == 0 else STATE_FAILED
+            track.output = text
+            if code != 0:
+                track.pipeline.state = STATE_FAILED
+            db.session.add(track)
+            try:
+                db.session.commit()
+            except Exception as e:
+                print(e)
+                db.session.rollback
